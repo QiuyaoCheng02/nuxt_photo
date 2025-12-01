@@ -1,92 +1,152 @@
 <script setup lang="ts">
-/*
-Example of how to use Nuxt's server API to get/send data from Supabase
-    This is how we do it in actual production for security
+const { signIn, signUp } = useAuth();
+const router = useRouter();
+const user = useSupabaseUser();
 
-const body = {
-  table: "table_name",
-  bucket: "bucket_name",
-  fileName: "file_name",
-}
+// switch between login and signup mode
+const isLogin = ref(true);
 
-const data = await $fetch("/api/fetchData", {
-  method: "POST",
-  body,
-});
-
- // uses Nuxt's special $fetch function, basically the same as fetch
-
-console.log(data); // either table data in JSON format or URL to image/whatever asset
-*/
-
-// Create dynamic reference to table data
-//    Anything inside a 'ref' vue/nuxt will watch for changes and update the DOM
-const dataReference = ref<any>(null);
-const retrievedData = await $fetch("/api/fetchData", {
-  method: "POST",
-  body: {
-    table: "test",
-  },
-});
-
-if (retrievedData && retrievedData.length > 0) {
-  dataReference.value = retrievedData;
-} else {
-  dataReference.value = [
-    { id: 1, message: "Sample Data 1" },
-    { id: 2, message: "Sample Data 2" },
-    { id: 3, message: "Sample Data 3" },
-    { id: 4, message: "Sample Data 4" },
-    { id: 5, message: "Sample Data 5" },
-  ];
-}
-
-// Using a reactive form state to handle user input
+// form state
 const formState = reactive({
-  message: "",
+  email: '',
+  password: '',
 });
 
-// Fill in with code to use our api to send data to Supabase
-async function submitForm() {
-  console.log("Form State: ", formState);
-  // YOUR CODE HERE
-}
+const error = ref('');
+const loading = ref(false);
+
+// if user is already logged in, redirect to gallery
+watchEffect(() => {
+  if (user.value) {
+    router.push('/gallery');
+  }
+});
+
+// handle form submission
+const handleSubmit = async () => {
+  loading.value = true;
+  error.value = '';
+
+  try {
+    if (isLogin.value) {
+      // login
+      await signIn(formState.email, formState.password);
+      router.push('/gallery');
+    } else {
+      // sign up
+      await signUp(formState.email, formState.password);
+      alert('Account created successfully! Please sign in.');
+      isLogin.value = true;
+      formState.password = '';
+    }
+  } catch (e: any) {
+
+    if (e.message.includes('Invalid login credentials')) {
+      error.value = 'Invalid email or password. Please try again.';
+    } else if (e.message.includes('Email not confirmed')) {
+      error.value = 'Please check your email to confirm your account.';
+    } else {
+      error.value = e.message;
+    }
+  } finally {
+    loading.value = false;
+  }
+};
 </script>
 
 <template>
-  <!-- Example of how to use a reusable component. No import is needed, all components are automatically imported. -->
-  <Header />
-  <div class="flex flex-col items-center justify-center">
-    <!-- A basic form is provided as an example. Modify it as you please. -->
-    <div class="flex flex-col justify-center items-center gap-4 w-full">
-      <h2 class="text-2xl font-bold">Table Data</h2>
-      <ul>
-        <!-- Example of how to cleanly display data via vue loops -->
-        <li v-for="item in dataReference" :key="item.id">
-          <!-- Example of dynmaically displaying data in our HTML -->
-          <span>{{ item }}</span>
-        </li>
-      </ul>
-    </div>
-
-    <div class="flex flex-col justify-center items-center gap-4 w-full mt-8">
-      <h2 class="text-2xl font-bold">Form</h2>
-      <p>Form State {{ formState }}</p>
-      <div class="flex flex-row gap-4">
-        <p>Message:</p>
-        <!-- v-model allows the input to simultaneously dipslay and update the formState.message variable -->
-        <input
-          type="text"
-          v-model="formState.message"
-          placeholder="Enter a message"
+  <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div class="max-w-md w-full mx-4">
+      <!-- Logo and Title -->
+      <div class="text-center mb-8">
+        <img 
+          src="/full_logo.png" 
+          alt="Clear Lakes Dental" 
+          class="mx-auto h-24 w-auto mb-4"
         />
+        <h2 class="text-3xl font-extrabold text-gray-900">
+          {{ isLogin ? 'Welcome Back' : 'Create Account' }}
+        </h2>
+        <p class="mt-2 text-sm text-gray-600">
+          {{ isLogin ? 'Sign in to access your photos' : 'Sign up to start uploading' }}
+        </p>
       </div>
-      <button
-        class="bg-blue-500 text-white px-4 py-2 rounded-md"
-        @click="submitForm"
-      >
-        Submit
-      </button>
+
+      <!-- Login Form Card -->
+      <div class="bg-white rounded-lg shadow-xl p-8">
+        <form @submit.prevent="handleSubmit" class="space-y-6">
+          <!-- Email Input -->
+          <div>
+            <label for="email" class="block text-sm font-medium text-gray-700 mb-1">
+              Email Address
+            </label>
+            <input
+              id="email"
+              v-model="formState.email"
+              type="email"
+              required
+              autocomplete="email"
+              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="you@example.com"
+            />
+          </div>
+
+          <!-- Password Input -->
+          <div>
+            <label for="password" class="block text-sm font-medium text-gray-700 mb-1">
+              Password
+            </label>
+            <input
+              id="password"
+              v-model="formState.password"
+              type="password"
+              required
+              autocomplete="current-password"
+              minlength="6"
+              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="••••••••"
+            />
+            <p v-if="!isLogin" class="mt-1 text-xs text-gray-500">
+              Minimum 6 characters
+            </p>
+          </div>
+
+          <!-- Error Message -->
+          <div v-if="error" class="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div class="flex items-start">
+              <span class="text-red-500 text-xl mr-2">⚠️</span>
+              <p class="text-sm text-red-600">{{ error }}</p>
+            </div>
+          </div>
+
+          <!-- Submit Button -->
+          <button
+            type="submit"
+            :disabled="loading"
+            class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <span v-if="loading">
+              {{ isLogin ? 'Signing in...' : 'Creating account...' }}
+            </span>
+            <span v-else>
+              {{ isLogin ? 'Sign In' : 'Sign Up' }}
+            </span>
+          </button>
+        </form>
+
+        <!-- Toggle Login/Signup -->
+        <div class="mt-6 text-center">
+          <button
+            type="button"
+            @click="isLogin = !isLogin; error = ''"
+            class="text-sm text-blue-600 hover:text-blue-500 font-medium"
+          >
+            {{ isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in' }}
+          </button>
+        </div>
+      </div>
+
+
     </div>
   </div>
 </template>
