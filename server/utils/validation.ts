@@ -1,5 +1,5 @@
 import { z } from 'zod';
-
+//validate data from client meet the schema
 export const createImageSchema = z.object({
   file_name: z.string().min(1),
   file_path: z.string().min(1),

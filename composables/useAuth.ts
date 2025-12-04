@@ -44,21 +44,8 @@ export const useAuth = () => {
 
     if (error) throw error;
 
-      // create a profile entry 
-    if (data.user) {
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: data.user.id,
-        email: data.user.email || '',
-        role: 'user',
-
-        is_banned: false,
-      } as any);
-      
-      if (profileError) {
-        console.error('Error creating profile:', profileError);
-      }
-    }
-
+    // handle profile creation by trigger 
+//stop manually insert into 'profiles' table here
     return data;
   };
 
