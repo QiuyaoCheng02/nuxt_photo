@@ -45,12 +45,22 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // transform images to include flattened user email
-  return {
-    success: true,
-    images: images.map((img: any) => ({
+  // signed url with 1 hour expiration
+  const imagesWithUrls = await Promise.all(images.map(async (img: any) => {
+
+    const { data: signedData } = await client.storage
+      .from('photos')
+      .createSignedUrl(img.file_path, 3600);
+
+    return {
       ...img,
       user_email: img.profiles?.email,
-    })),
+      url: signedData?.signedUrl || null,
+    };
+  }));
+
+  return {
+    success: true,
+    images: imagesWithUrls,
   };
 });

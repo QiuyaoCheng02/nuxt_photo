@@ -7,51 +7,77 @@ export const useImageUpload = () => {
   const uploading = ref(false);
   const uploadProgress = ref(0);
 
-  // upload image to Supabase Storage and save record to database
-  const uploadImage = async (file: File, customName?: string): Promise<UploadResponse> => {
+  // upload multiple images with aggregated progress
+
+  const uploadImage = async (files: { file: File; customName?: string }[]) => {
     if (!user.value) {
       return { success: false, error: 'Not authenticated' };
     }
 
     uploading.value = true;
     uploadProgress.value = 0;
+    
+    const totalFiles = files.length;
+    const progressMap = new Map<number, number>(); // index -> progress
+
+    // Helper to update total progress
+    const updateProgress = (index: number, percent: number) => {
+      progressMap.set(index, percent);
+      const totalPercent = Array.from(progressMap.values()).reduce((a, b) => a + b, 0);
+      uploadProgress.value = Math.round(totalPercent / totalFiles);
+    };
 
     try {
-      // generate unique filename for storage (keep extension)
-      const fileExt = file.name.split('.').pop();
-      const storageFileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `${user.value.id}/${storageFileName}`;
+      const uploadPromises = files.map(async ({ file, customName }, index) => {
+        try {
+          // Prepare file info
+          const fileExt = file.name.split('.').pop();
+          const storageFileName = `${Date.now()}_${Math.random().toString(36).substring(7)}_${index}.${fileExt}`;
+          const filePath = `${user.value!.id}/${storageFileName}`;
+          const displayName = customName ? `${customName}.${fileExt}` : file.name;
 
-      // use custom name if provided, otherwise original name
-      const displayName = customName ? `${customName}.${fileExt}` : file.name;
+          updateProgress(index, 10); // Started
 
-      // upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('photos')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
+          // Upload to Supabase Storage
+          const { error: uploadError } = await supabase.storage
+            .from('photos')
+            .upload(filePath, file, {
+              cacheControl: '3600',
+              upsert: false,
+            });
 
-      if (uploadError) throw uploadError;
+          if (uploadError) throw uploadError;
 
-      uploadProgress.value = 50;
+          updateProgress(index, 50); // Storage upload done
 
-      // save image record to database via Server API
-      const { image: imageData } = await $fetch<UploadResponse>('/api/image/create', {
-        method: 'POST',
-        body: {
-          file_name: displayName,
-          file_path: filePath,
-          file_size: file.size,
-        },
+          // save record to DB
+          const { image: imageData } = await $fetch<UploadResponse>('/api/image/create', {
+            method: 'POST',
+            body: {
+              file_name: displayName,
+              file_path: filePath,
+              file_size: file.size,
+            },
+          });
+
+          updateProgress(index, 100); // DB record created
+
+          return { success: true, image: imageData };
+        } catch (error: any) {
+          console.error(`Upload error for ${file.name}:`, error);
+          return { success: false, error: error.message, fileName: file.name };
+        }
       });
 
-      uploadProgress.value = 100;
+      const results = await Promise.all(uploadPromises);
+      
+      return { 
+        success: results.every(r => r.success), 
+        results 
+      };
 
-      return { success: true, image: imageData };
     } catch (error: any) {
-      console.error('Upload error:', error);
+      console.error('Batch upload error:', error);
       return { success: false, error: error.message };
     } finally {
       uploading.value = false;
